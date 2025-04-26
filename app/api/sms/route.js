@@ -1,31 +1,7 @@
-// app/api/sms/route.js
-
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import admin from '../../../lib/firebaseAdmin'; // adjust path as needed
 
-const dataFilePath = path.join(process.cwd(), 'api', 'sms.json');
-
-function readSmsData() {
-  try {
-    if (!fs.existsSync(dataFilePath)) {
-      return [];
-    }
-    const fileData = fs.readFileSync(dataFilePath, 'utf8');
-    return fileData ? JSON.parse(fileData) : [];
-  } catch (err) {
-    console.error('Error reading SMS data:', err);
-    return [];
-  }
-}
-
-function saveSmsData(data) {
-  try {
-    fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Error saving SMS data:', err);
-  }
-}
+const db = admin.database();
 
 export async function POST(request) {
   try {
@@ -37,17 +13,18 @@ export async function POST(request) {
       );
     }
 
-    const smsData = readSmsData();
     const newSms = {
       sender,
       message,
       receivedAt: new Date().toISOString(),
     };
-    smsData.push(newSms);
-    saveSmsData(smsData);
+
+    // Push to Firebase Realtime Database
+    await db.ref('sms').push(newSms);
 
     return NextResponse.json({ success: true, received: newSms });
   } catch (err) {
+    console.error(err);
     return NextResponse.json(
       { error: 'Invalid request or server error' },
       { status: 500 }
@@ -57,9 +34,13 @@ export async function POST(request) {
 
 export async function GET() {
   try {
-    const smsData = readSmsData();
-    return NextResponse.json({ sms: smsData });
+    const snapshot = await db.ref('sms').once('value');
+    const data = snapshot.val() || {};
+    // Convert object to array
+    const sms = Object.values(data);
+    return NextResponse.json({ sms });
   } catch (err) {
+    console.error(err);
     return NextResponse.json(
       { error: 'Could not read SMS data' },
       { status: 500 }
